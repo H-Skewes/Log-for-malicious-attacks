@@ -30,8 +30,8 @@ from datetime import datetime
 from collectors.base_collector import BaseCollector
 from collectors.ebpf_collector import EbpfCollector
 from collectors.cron_collector import CronCollector
+from collectors.arp_spoof_collector import ArpSpoofCollector
 # Future collectors get imported and added here:
-# from collectors.arp_collector import ArpCollector
 # from collectors.tcp_session_collector import TcpSessionCollector
 
 from shipper import LogShipper
@@ -75,9 +75,8 @@ def build_collectors(vm_ip: str) -> List[BaseCollector]:
 
     # Cron job abuse detector
     collectors.append(CronCollector(vm_ip=vm_ip))
-
+    collectors.append(ArpSpoofCollector(vm_ip=vm_ip))
     # Future collectors - uncomment as implemented:
-    # collectors.append(ArpCollector(vm_ip=vm_ip))
     # collectors.append(TcpSessionCollector(vm_ip=vm_ip))
 
     return collectors
