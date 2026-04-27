@@ -338,21 +338,22 @@ class EbpfCollector(BaseCollector):
 
         return events
 
-    def _get_loaded_bpf_program_ids(self) -> Set[int]:
-        """Get set of currently loaded eBPF program IDs"""
-        try:
-            result = subprocess.run(
-                ["bpftool", "prog", "list", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and result.stdout:
-                programs = json.loads(result.stdout)
-                return {p["id"] for p in programs if "id" in p}
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-            pass
-        return set()
+
+   def _get_loaded_bpf_program_ids(self) -> Set[int]:
+       try:
+           result = subprocess.run(
+               ["bpftool", "prog", "list", "--json"],
+               capture_output=True, text=True, timeout=5
+           )
+           if result.returncode == 0 and result.stdout:
+               programs = json.loads(result.stdout)
+               # only track suspicious types, ignore normal cgroup programs
+               suspicious_types = {"tracepoint", "kprobe", "raw_tracepoint"}
+               return {p["id"] for p in programs if p.get("type") in suspicious_types}
+       except Exception:
+           pass
+       return set()
+
 
     def _get_bpf_program_details(self, prog_id: int) -> Dict[str, str]:
         """Get details for a specific eBPF program by ID"""
