@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from scapy.all import sniff, TCP, IP
-
+import threading
 from collectors.base_collector import BaseCollector
 
 
@@ -20,14 +20,17 @@ class TcpSessionCollector(BaseCollector):
         return events
 
     def on_start(self):
-        # start packet sniffing in background
-        sniff(
-            iface=self.config.get("interface"),  # network interface (eth0, etc.)
-            filter="tcp",                        # only capture TCP packets
-            prn=self._process_packet,            # callback per packet
-            store=0,
+        t = threading.Thread(
+            target=sniff,
+            kwargs={
+                "iface": self.config.get("interface"),
+                "filter": "tcp",
+                "prn": self._process_packet,
+                "store": 0,
+            },
             daemon=True
         )
+        t.start()
 
     def _process_packet(self, packet):
         # ignore packets without TCP/IP layers
