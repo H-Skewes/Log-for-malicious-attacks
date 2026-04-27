@@ -346,7 +346,6 @@ class EbpfCollector(BaseCollector):
                 capture_output=True, text=True, timeout=5)
             if result.returncode == 0 and result.stdout:
                 programs = json.loads(result.stdout)
-                # only track suspicious types, ignore normal cgroup programs
                 suspicious_types = {"tracepoint", "kprobe", "raw_tracepoint"}
                 return {p["id"] for p in programs if p.get("type") in suspicious_types}
         except Exception:
