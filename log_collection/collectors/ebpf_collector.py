@@ -352,7 +352,7 @@ class EbpfCollector(BaseCollector):
                return {p["id"] for p in programs if p.get("type") in suspicious_types}
        except Exception:
            pass
-       return set()
+      return set()
 
 
     def _get_bpf_program_details(self, prog_id: int) -> Dict[str, str]:
