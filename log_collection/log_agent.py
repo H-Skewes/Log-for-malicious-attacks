@@ -67,7 +67,7 @@ def build_collectors(vm_ip: str) -> List[BaseCollector]:
             # Add any process names on this VM that legitimately use eBPF
             "bpf_whitelist": {
                 "systemd", "dockerd", "containerd",
-                "falco", "cilium", "prometheus",
+                "falco", "cilium", "prometheus", "bpftool"
             }
         }
     ))
