@@ -1,12 +1,10 @@
 #!/bin/bash
-# setup_agent.sh - Install log agent dependencies on victim VMs
+# Setup file for log agent meant for linux in this instance an ubuntu server
 # Usage: sudo bash setup_agent.sh
 
 set -e
 
-echo "=================================================="
-echo "  Cloud Security Lab - Log Agent Setup"
-echo "=================================================="
+echo "Setting up log agent"
 
 if [ "$EUID" -ne 0 ]; then
     echo "[!] Run as root: sudo bash setup_agent.sh"
@@ -32,11 +30,9 @@ apt install -y python3-pip
 pip3 install psutil 2>/dev/null || true
 
 echo ""
-echo "=================================================="
-echo "[+] Log agent setup complete!"
-echo "=================================================="
+echo "Log agent setup done"
 echo ""
-echo "Run the agent with:"
-echo "  sudo python3 log_agent.py"
+echo "Run the log agent with:"
+echo "sudo python3 log_agent.py"
 echo ""
-echo "Make sure the central collector (10.10.0.20) is running first."
+echo "Ensure central collector is active and proper ip is addressed before running the agent"
