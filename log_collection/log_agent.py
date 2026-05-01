@@ -1,24 +1,3 @@
-"""
-log_agent.py
-
-Main LogAgent - orchestrates all collectors and ships events to the
-central log collector VM.
-
-Usage:
-    sudo python3 log_agent.py
-
-The agent:
-1. Instantiates all registered collectors
-2. Calls on_start() on each to capture baselines
-3. Polls each collector every POLL_INTERVAL seconds
-4. Batches all events and ships them via LogShipper
-5. Handles SIGTERM/SIGINT for graceful shutdown
-
-To add a new attack collector:
-1. Create collectors/your_collector.py subclassing BaseCollector
-2. Import it here and add to REGISTERED_COLLECTORS
-"""
-
 import time
 import signal
 import sys
@@ -67,7 +46,7 @@ def build_collectors(vm_ip: str) -> List[BaseCollector]:
             # Add any process names on this VM that legitimately use eBPF
             "bpf_whitelist": {
                 "systemd", "dockerd", "containerd",
-                "falco", "cilium", "prometheus", "bpftool"
+                "falco", "cilium", "prometheus", "bpftool",
             }
         }
     ))
