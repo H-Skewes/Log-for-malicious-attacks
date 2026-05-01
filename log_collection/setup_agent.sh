@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup file for log agent meant for linux in this instance an ubuntu server
-# Usage: sudo bash setup_agent.sh
+# to use run - sudo bash setup_agent.sh
 
 set -e
 
