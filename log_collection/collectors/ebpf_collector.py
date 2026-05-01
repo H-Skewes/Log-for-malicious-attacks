@@ -1,18 +1,3 @@
-"""
-collectors/ebpf_collector.py
-
-Log collector for eBPF program injection attacks.
-
-Monitors:
-1. bpf() syscall invocations via auditd - flags non-whitelisted callers
-2. Outbound connections via /proc/net/tcp - flags unknown processes
-   connecting to internal IPs on suspicious ports
-3. Loaded eBPF programs via bpftool - flags unexpected programs
-
-Integrates with the BaseCollector interface so LogAgent can
-run it alongside other attack collectors transparently.
-"""
-
 import subprocess
 import json
 import os
@@ -35,6 +20,7 @@ DEFAULT_BPF_WHITELIST = {
     "cilium",
     "prometheus",
     "node_exporter",
+    "bpftool",
 }
 
 # Ports that suggest exfiltration when seen on outbound connections
@@ -43,7 +29,7 @@ SUSPICIOUS_PORTS = {4444, 9001, 1337, 31337, 4545, 5555}
 
 # Internal subnet prefix - connections to these from unknown processes are flagged
 INTERNAL_SUBNET = "10.10.0."
-
+COLLECTOR_IP = "10.10.0.10"
 
 class EbpfCollector(BaseCollector):
     """
@@ -204,7 +190,8 @@ class EbpfCollector(BaseCollector):
 
                 is_suspicious = False
                 reason = ""
-
+                if dest_ip == COLLECTOR_IP:
+                    continue
                 # Flag connections to internal subnet from unexpected processes
                 if dest_ip.startswith(INTERNAL_SUBNET):
                     is_suspicious = True
@@ -330,14 +317,18 @@ class EbpfCollector(BaseCollector):
                         detection_method="bpftool_prog_list",
                     ))
 
+            # Always update baseline to current state after each check
+            # This prevents re-alerting on the same programs next poll cycle
+            # and ensures detached programs are removed from tracking
+            self._baseline_bpf_programs = current_ids
+
         except FileNotFoundError:
-            # bpftool not installed
+        # bpftool not installed
             pass
         except Exception as e:
             print(f"[{self.name}] bpftool check error: {e}")
 
         return events
-
 
     def _get_loaded_bpf_program_ids(self) -> Set[int]:
         try:

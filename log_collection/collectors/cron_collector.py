@@ -1,18 +1,3 @@
-"""
-collectors/cron_collector.py
-
-Log collector for unauthorized cron job creation attacks (Tres's attack).
-
-Monitors:
-1. /etc/crontab for modifications via hash comparison
-2. /etc/cron.d/ directory for new/modified files
-3. /var/spool/cron/ for per-user crontab changes
-4. Flags cron entries executing scripts from writable directories (/tmp, /dev/shm etc.)
-
-Integrates with BaseCollector so LogAgent runs it alongside EbpfCollector
-transparently.
-"""
-
 import os
 import hashlib
 from typing import List, Dict, Any, Optional, NamedTuple
