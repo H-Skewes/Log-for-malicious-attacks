@@ -9,10 +9,10 @@ class ArpSpoofCollector(BaseCollector):
     def __init__(self, vm_ip: str):
         super().__init__(vm_ip=vm_ip)
 
-        # store VM IP
+        # Stores the VM IP
         self.vm_ip = vm_ip
 
-        # auto-detect gateway
+        # Auto detects the gateway
         self.gateway_ip = conf.route.route("0.0.0.0")[2]
 
         self.known_gateway_mac = None
@@ -22,7 +22,7 @@ class ArpSpoofCollector(BaseCollector):
         # ARP state table
         self.arp_table = {}
 
-        # interface selection
+        # Interface selection
         self.interface = conf.iface
 
     @property
@@ -48,21 +48,21 @@ class ArpSpoofCollector(BaseCollector):
 
             with self.lock:
 
-                # Learn baseline gateway MAC
+                # Learns the baseline gateway MAC address
                 if ip == self.gateway_ip and self.known_gateway_mac is None:
                     self.known_gateway_mac = mac
                     return
 
-                # Gateway MAC change detection
+                # Detects when the Gateway MAC address is changed   
                 if ip == self.gateway_ip and self.known_gateway_mac and mac != self.known_gateway_mac:
-                    self.create_event(ip, mac, "Gateway MAC changed")
+                    self.create_event(ip, mac, "Gateway MAC address changed")
 
-                # MAC reuse across IPs
+                # Detects when the same MAC address is used across multiple IPs
                 for stored_ip, stored_mac in self.arp_table.items():
                     if stored_mac == mac and stored_ip != ip:
-                        self.create_event(ip, mac, "MAC used across multiple IPs")
+                        self.create_event(ip, mac, "Same MAC address detected across multiple IPs")
 
-                # update table
+                # Update table
                 self.arp_table[ip] = mac
 
     def create_event(self, ip, mac, reason):
