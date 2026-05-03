@@ -16,42 +16,32 @@ from shipper import LogShipper
 
 
 
-# Central server ip and port
+# Definitions
 COLLECTOR_IP = "10.10.0.10"
 COLLECTOR_PORT = 8443
-
-# This VM's IP - auto-detected if left as None
 VM_IP = None
-
-# How often to poll collectors and ship logs (seconds)
 POLL_INTERVAL = 5
-
-# TLS certificate paths (set to None for lab with self-signed/no-verify)
-CA_CERT = None        # Path to CA cert to verify collector
-CLIENT_CERT = None    # Path to client cert for mutual TLS
+CA_CERT = None
+CLIENT_CERT = None
 
 
-# Add new collector classes here as attacks are implemented
+# adds collector classes here
 def build_collectors(vm_ip: str) -> List[BaseCollector]:
     """
-    Instantiate all active collectors.
-    Each collector gets the VM IP and an optional config dict.
+    Each collector gets the VM IP and an optional config dict ebpf needs it to reduce false positives
     """
     collectors = []
 
-    # eBPF injection detector
+    # collectors added to collectors list
     collectors.append(EbpfCollector(
         vm_ip=vm_ip,
         config={
-            # Add any process names on this VM that legitimately use eBPF
             "bpf_whitelist": {
                 "systemd", "dockerd", "containerd",
                 "falco", "cilium", "prometheus", "bpftool",
             }
         }
     ))
-
-    # Cron job abuse detector
     collectors.append(CronCollector(vm_ip=vm_ip))
     collectors.append(ArpSpoofCollector(vm_ip=vm_ip))
     collectors.append(TcpSessionCollector(vm_ip=vm_ip))
@@ -60,9 +50,8 @@ def build_collectors(vm_ip: str) -> List[BaseCollector]:
 
 
 def get_vm_ip() -> str:
-    """Auto-detect this VM's primary IP address"""
+    # grabs current vms ip
     try:
-        # Connect to an external address to determine outbound IP
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.10.0.1", 80))
             return s.getsockname()[0]
@@ -73,9 +62,8 @@ def get_vm_ip() -> str:
 class LogAgent:
     """
     Main agent that coordinates collectors and log shipping.
-    Runs as a long-lived service on each victim VM.
     """
-
+    # defines logging vars
     def __init__(self):
         self.vm_ip = VM_IP or get_vm_ip()
         self.running = False
@@ -86,15 +74,16 @@ class LogAgent:
         self._total_events = 0
         self._poll_count = 0
         self._start_time = None
+    
 
+    # initializes collector and shipper
     def setup(self):
-        """Initialize collectors and shipper"""
         print(f"[agent] VM IP: {self.vm_ip}")
         print(f"[agent] Collector: {COLLECTOR_IP}:{COLLECTOR_PORT}")
         print(f"[agent] Poll interval: {POLL_INTERVAL}s")
         print()
 
-        # Build shipper
+        # Build shipper and collectors
         self.shipper = LogShipper(
             collector_ip=COLLECTOR_IP,
             collector_port=COLLECTOR_PORT,
@@ -102,10 +91,7 @@ class LogAgent:
             cafile=CA_CERT,
             certfile=CLIENT_CERT,
         )
-
-        # Build and initialize collectors
         self.collectors = build_collectors(self.vm_ip)
-
         print(f"[agent] Initializing {len(self.collectors)} collector(s)...")
         for collector in self.collectors:
             print(f"[agent]   - {collector.name}")
@@ -116,8 +102,9 @@ class LogAgent:
 
         print()
 
+
+    # time monitoring
     def run(self):
-        """Main poll loop"""
         self.running = True
         self._start_time = datetime.utcnow()
 
@@ -129,15 +116,16 @@ class LogAgent:
 
             self._poll_and_ship()
 
-            # Sleep for remainder of poll interval
+            # sleeps for remainder of poll interval
             elapsed = time.time() - loop_start
             sleep_time = max(0, POLL_INTERVAL - elapsed)
             time.sleep(sleep_time)
 
         self._shutdown()
 
+
+    # grabs collector events and ships it
     def _poll_and_ship(self):
-        """Poll all collectors and ship any events found"""
         self._poll_count += 1
         all_events = []
 
@@ -162,6 +150,8 @@ class LogAgent:
                 f"(total: {self._total_events})"
             )
 
+
+    # shutdown handling
     def _shutdown(self):
         """Graceful shutdown"""
         print("\n[agent] Shutting down...")
@@ -181,6 +171,7 @@ class LogAgent:
               f"Events: {self._total_events}")
         print("[agent] Stopped.")
 
+
     def stop(self):
         """Signal the agent to stop"""
         self.running = False
@@ -192,14 +183,14 @@ def main():
     print("=" * 60)
     print()
 
-    # Must run as root for /proc access and auditd
+    # must run as root for /proc access and auditd
     if os.geteuid() != 0:
         print("[!] This agent must be run as root (sudo python3 log_agent.py)")
         sys.exit(1)
 
     agent = LogAgent()
 
-    # Handle graceful shutdown on SIGTERM/SIGINT
+    # stop handling
     def handle_signal(sig, frame):
         print(f"\n[agent] Received signal {sig}, stopping...")
         agent.stop()

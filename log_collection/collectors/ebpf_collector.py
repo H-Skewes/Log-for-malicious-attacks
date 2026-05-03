@@ -10,8 +10,7 @@ from datetime import datetime
 from collectors.base_collector import BaseCollector
 
 
-# Processes legitimately allowed to call bpf()
-# Expand this whitelist to match your environment
+# doubled white list to make sure nothing slips past log agent
 DEFAULT_BPF_WHITELIST = {
     "systemd",
     "dockerd",
@@ -23,56 +22,44 @@ DEFAULT_BPF_WHITELIST = {
     "bpftool",
 }
 
-# Ports that suggest exfiltration when seen on outbound connections
-# from unexpected processes
+# irregular ports to build mitigation case
 SUSPICIOUS_PORTS = {4444, 9001, 1337, 31337, 4545, 5555}
 
-# Internal subnet prefix - connections to these from unknown processes are flagged
+# internal ips to limit outbound connection flagging
 INTERNAL_SUBNET = "10.10.0."
 COLLECTOR_IP = "10.10.0.10"
 
-class EbpfCollector(BaseCollector):
-    """
-    Detects eBPF program injection attacks by monitoring:
-    - auditd bpf() syscall events
-    - /proc/net/tcp for suspicious outbound connections
-    - bpftool prog list for unexpected loaded programs
-    """
 
+# monitors using auditd bpf syscall events, /proc/net/tcp outbound connection, and bpf prog list for unexpected programs
+class EbpfCollector(BaseCollector):
     def __init__(self, vm_ip: str, config: Dict[str, Any] = None):
         super().__init__(vm_ip, config)
 
-        # Whitelist of process names allowed to call bpf()
+        # sets whitelist
         self.bpf_whitelist: Set[str] = set(
             self.config.get("bpf_whitelist", DEFAULT_BPF_WHITELIST)
         )
-
-        # Track audit log position to avoid re-reporting old events
+        # sets time stamps and monitoring baseline
         self._last_audit_timestamp = None
-
-        # Baseline of known eBPF program IDs at startup
         self._baseline_bpf_programs: Set[int] = set()
-
-        # Known good outbound connections (pid -> dest) seen at baseline
         self._baseline_connections: Set[str] = set()
+
 
     @property
     def name(self) -> str:
         return "ebpf_injection"
 
+
+    # sets baseline on start
     def on_start(self):
-        """Capture baseline state when agent starts"""
         self._baseline_bpf_programs = self._get_loaded_bpf_program_ids()
         self._baseline_connections = self._get_current_connections()
         self._last_audit_timestamp = datetime.utcnow()
         print(f"[{self.name}] Baseline: {len(self._baseline_bpf_programs)} eBPF programs, "
               f"{len(self._baseline_connections)} connections")
 
+    # runs detection checks
     def collect(self) -> List[Dict[str, Any]]:
-        """
-        Run all three detection checks and return any events found.
-        Called every N seconds by LogAgent.
-        """
         events = []
 
         events.extend(self._check_bpf_syscalls())
@@ -81,16 +68,12 @@ class EbpfCollector(BaseCollector):
 
         return events
 
-    # Detection Check 1 auditd bpf() syscall monitoring
+    # audit bpf check
     def _check_bpf_syscalls(self) -> List[Dict[str, Any]]:
-        """
-        Parse auditd logs for bpf() syscall invocations.
-        Flags any call from a process not in the whitelist.
-        """
+
         events = []
 
         try:
-            # Use ausearch to get recent bpf() syscall audit events
             result = subprocess.run(
                 ["ausearch", "-sc", "bpf", "--start", "recent", "-i"],
                 capture_output=True,
@@ -101,57 +84,44 @@ class EbpfCollector(BaseCollector):
             if result.returncode != 0 and not result.stdout:
                 return events
 
-            # Parse each audit record
             current_record = {}
             for line in result.stdout.split('\n'):
                 line = line.strip()
                 if not line:
-                    # End of a record - process it
                     if current_record:
                         event = self._process_audit_record(current_record)
                         if event:
                             events.append(event)
                         current_record = {}
                     continue
-
-                # Parse key=value pairs from audit line
-                # Format: type=SYSCALL msg=audit(...) arch=... syscall=... comm="..." exe="..."
                 pairs = re.findall(r'(\w+)=(?:"([^"]*)"|([\S]*))', line)
                 for key, quoted_val, unquoted_val in pairs:
                     current_record[key] = quoted_val if quoted_val else unquoted_val
-
         except subprocess.TimeoutExpired:
             pass
         except FileNotFoundError:
-            # ausearch not available - auditd may not be installed
             pass
         except Exception as e:
             print(f"[{self.name}] auditd check error: {e}")
-
         return events
 
+
+    # parse auditd check
     def _process_audit_record(self, record: Dict[str, str]) -> Dict[str, Any]:
-        """
-        Process a parsed auditd record and return an event if suspicious.
-        """
         comm = record.get("comm", "unknown")
         exe = record.get("exe", "unknown")
         pid = record.get("pid", "unknown")
         uid = record.get("uid", "unknown")
         auid = record.get("auid", "unknown")
-
-        # Clean up comm name (sometimes quoted)
         comm_clean = comm.strip('"').split('/')[-1]
 
-        # Check if this process is whitelisted
+        # filter
         if comm_clean in self.bpf_whitelist:
             return None
-
-        # Also check exe path basename
         exe_basename = exe.strip('"').split('/')[-1]
         if exe_basename in self.bpf_whitelist:
             return None
-
+        # return auditd events
         return self.build_event(
             severity="critical",
             description=(
@@ -167,13 +137,8 @@ class EbpfCollector(BaseCollector):
         )
 
 
-    # Detection Check 2 /proc/net/tcp outbound connection monitoring
+    # outbound connection check flags connections and suspicious ports uses get current conn to grab conns to compare to baseline
     def _check_outbound_connections(self) -> List[Dict[str, Any]]:
-        """
-        Read /proc/net/tcp to find outbound connections.
-        Flags connections to internal IPs or suspicious ports from
-        processes not seen at baseline.
-        """
         events = []
 
         try:
@@ -192,12 +157,10 @@ class EbpfCollector(BaseCollector):
                 reason = ""
                 if dest_ip == COLLECTOR_IP:
                     continue
-                # Flag connections to internal subnet from unexpected processes
                 if dest_ip.startswith(INTERNAL_SUBNET):
                     is_suspicious = True
                     reason = f"unexpected internal connection to {dest_ip}:{dest_port}"
 
-                # Flag connections on known exfiltration ports
                 if dest_port in SUSPICIOUS_PORTS:
                     is_suspicious = True
                     reason = f"connection on suspicious port {dest_port} to {dest_ip}"
@@ -214,17 +177,13 @@ class EbpfCollector(BaseCollector):
                         process=proc_name,
                         detection_method="proc_net_tcp",
                     ))
-
         except Exception as e:
             print(f"[{self.name}] connection check error: {e}")
-
         return events
 
+
+    # grabs the connections for check
     def _get_current_connections(self) -> Set[str]:
-        """
-        Read /proc/net/tcp and return set of connection keys.
-        Key format: "dest_ip|dest_port|process_name"
-        """
         connections = set()
 
         try:
@@ -236,41 +195,35 @@ class EbpfCollector(BaseCollector):
                 if len(parts) < 10:
                     continue
 
-                # Only look at ESTABLISHED connections (state=01)
                 state = parts[3]
                 if state != "01":
                     continue
 
-                # Destination is parts[2] in hex: XXXXXXXX:PPPP
                 remote_hex = parts[2]
                 dest_ip = self._hex_to_ip(remote_hex[:8])
                 dest_port = int(remote_hex[9:], 16)
 
-                # Get process name from inode
                 inode = parts[9]
                 proc_name = self._inode_to_process(inode)
 
                 key = f"{dest_ip}|{dest_port}|{proc_name}"
                 connections.add(key)
-
         except Exception:
             pass
-
         return connections
 
+
+    # helper to convert hex to ip for get conn
     def _hex_to_ip(self, hex_ip: str) -> str:
-        """Convert little-endian hex IP to dotted decimal"""
         try:
             packed = bytes.fromhex(hex_ip)
             return socket.inet_ntoa(packed[::-1])
         except Exception:
             return "0.0.0.0"
 
+
+    # check proc pid for who owns what socket
     def _inode_to_process(self, inode: str) -> str:
-        """
-        Look up which process owns a socket by its inode number.
-        Walks /proc/<pid>/fd/ looking for the socket inode.
-        """
         try:
             for pid in os.listdir("/proc"):
                 if not pid.isdigit():
@@ -288,12 +241,9 @@ class EbpfCollector(BaseCollector):
             pass
         return "unknown"
 
-    # Detection Check 3 bpftool loaded program monitoring
+
+    # checks ebpf programs against baseline
     def _check_loaded_programs(self) -> List[Dict[str, Any]]:
-        """
-        Use bpftool to list currently loaded eBPF programs.
-        Flags any program IDs not in the baseline.
-        """
         events = []
 
         try:
@@ -316,10 +266,6 @@ class EbpfCollector(BaseCollector):
                         prog_name=details.get("name", "unknown"),
                         detection_method="bpftool_prog_list",
                     ))
-
-            # Always update baseline to current state after each check
-            # This prevents re-alerting on the same programs next poll cycle
-            # and ensures detached programs are removed from tracking
             self._baseline_bpf_programs = current_ids
 
         except FileNotFoundError:
@@ -330,6 +276,8 @@ class EbpfCollector(BaseCollector):
 
         return events
 
+
+    # helper that gets ebpf program ids for baseline and check
     def _get_loaded_bpf_program_ids(self) -> Set[int]:
         try:
             result = subprocess.run(
@@ -343,7 +291,8 @@ class EbpfCollector(BaseCollector):
             pass
         return set()
 
-
+    
+    # second ebpf helper for checks
     def _get_bpf_program_details(self, prog_id: int) -> Dict[str, str]:
         """Get details for a specific eBPF program by ID"""
         try:
