@@ -10,7 +10,7 @@ WATCH_FILES = [
     "/etc/crontab",
     "/etc/anacrontab",
 ]
-
+# Directory where any additional cron jobs can be placed
 WATCH_DIR = "/etc/cron.d"
 SPOOL_DIR = "/var/spool/cron/crontabs"
 
@@ -25,7 +25,7 @@ WRITABLE_DIRS = [
 
 
 class CronEntry(NamedTuple):
-    """Represents a single parsed cron job entry"""
+    """Basic structure for a pasred cron entry"""
     schedule: str
     user: str
     command: str
@@ -44,16 +44,16 @@ class CronCollector(BaseCollector):
     def __init__(self, vm_ip: str, config: Dict[str, Any] = None):
         super().__init__(vm_ip, config)
 
-        # Baseline hashes of watched files captured at startup
+        # Store initial hashes so we can detect changes later
         self._file_baselines: Dict[str, Optional[str]] = {}
 
-        # Baseline snapshot of /etc/cron.d/ contents
+        # Snapshot of /etc/cron.d/ at start
         self._cron_dir_baseline: Dict[str, Optional[str]] = {}
 
-        # Baseline snapshot of /var/spool/cron/ contents
+        # Snapshot of user cron jobs
         self._spool_baseline: Dict[str, Optional[str]] = {}
 
-        # Baseline cron entries - used to detect newly added entries
+        # Tracks known cron entrie so we can detect new ones
         self._known_entries: Dict[str, str] = {}  # raw_line -> source_file
 
     @property
@@ -61,7 +61,7 @@ class CronCollector(BaseCollector):
         return "cron_abuse"
 
     def on_start(self):
-        """Capture baseline hashes and cron entries at agent startup"""
+        """Build baseline of files and cron entries when agent starts"""
 
         # Hash individual watched files
         for path in WATCH_FILES:
@@ -98,11 +98,11 @@ class CronCollector(BaseCollector):
         return events
 
     # ------------------------------------------------------------------
-    # Detection Check 1: Hash comparison on individual cron files
+    # File hash check
     # ------------------------------------------------------------------
 
     def _check_watched_files(self) -> List[Dict[str, Any]]:
-        """Detect modifications to /etc/crontab and /etc/anacrontab"""
+        """Check if any core cron files were modified"""
         events = []
 
         for path in WATCH_FILES:
@@ -136,7 +136,7 @@ class CronCollector(BaseCollector):
         return events
 
     # ------------------------------------------------------------------
-    # Detection Check 2: /etc/cron.d/ directory monitoring
+    # cron.d/ directory monitoring
     # ------------------------------------------------------------------
 
     def _check_cron_dir(self) -> List[Dict[str, Any]]:
@@ -167,7 +167,7 @@ class CronCollector(BaseCollector):
         return events
 
     # ------------------------------------------------------------------
-    # Detection Check 3: /var/spool/cron/ monitoring (user crontabs)
+    #  Spool monitoring (user crontabs)
     # ------------------------------------------------------------------
 
     def _check_spool_dir(self) -> List[Dict[str, Any]]:
@@ -200,7 +200,7 @@ class CronCollector(BaseCollector):
         return events
 
     # ------------------------------------------------------------------
-    # Detection Check 4: Parse entries and flag writable dir execution
+    # Entry-based detection
     # ------------------------------------------------------------------
 
     def _check_for_new_entries(self) -> List[Dict[str, Any]]:
@@ -244,7 +244,7 @@ class CronCollector(BaseCollector):
         return events
 
     # ------------------------------------------------------------------
-    # Helpers from Tres's original code, adapted for OOP
+    # Helpers 
     # ------------------------------------------------------------------
 
     def _file_hash(self, path: str) -> Optional[str]:
@@ -260,8 +260,7 @@ class CronCollector(BaseCollector):
 
     def _snapshot_watch_dir(self, directory: str) -> Dict[str, Optional[str]]:
         """
-        Snapshot all files in a directory as path -> hash dict.
-        Returns empty dict if directory doesn't exist.
+        Create a snappshot of all files in a directory
         """
         snapshot = {}
         if not os.path.isdir(directory):
@@ -282,7 +281,7 @@ class CronCollector(BaseCollector):
     ) -> List[str]:
         """
         Return list of file paths that are new or have changed hash.
-        Directly from Tres's diff_changed_files logic.
+        
         """
         changed = []
         for path, new_hash in new.items():
@@ -295,7 +294,7 @@ class CronCollector(BaseCollector):
     def _read_payload_preview(self, command: str) -> str:
         """
         If command references a script file, read first 500 chars.
-        From Tres's read_payload_preview logic.
+       
         """
         tokens = command.split()
         for token in tokens:
@@ -310,7 +309,7 @@ class CronCollector(BaseCollector):
     def _parse_cron_file(self, path: str) -> List[CronEntry]:
         """
         Parse a cron file into CronEntry objects.
-        From Tres's parse_cron_file logic.
+    
         """
         entries = []
         try:
