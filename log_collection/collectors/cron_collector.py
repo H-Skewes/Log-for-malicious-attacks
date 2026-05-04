@@ -97,9 +97,6 @@ class CronCollector(BaseCollector):
 
         return events
 
-    # ------------------------------------------------------------------
-    # File hash check
-    # ------------------------------------------------------------------
 
     def _check_watched_files(self) -> List[Dict[str, Any]]:
         """Check if any core cron files were modified"""
@@ -135,10 +132,6 @@ class CronCollector(BaseCollector):
 
         return events
 
-    # ------------------------------------------------------------------
-    # cron.d/ directory monitoring
-    # ------------------------------------------------------------------
-
     def _check_cron_dir(self) -> List[Dict[str, Any]]:
         """Detect new or modified files in /etc/cron.d/"""
         events = []
@@ -166,9 +159,6 @@ class CronCollector(BaseCollector):
 
         return events
 
-    # ------------------------------------------------------------------
-    #  Spool monitoring (user crontabs)
-    # ------------------------------------------------------------------
 
     def _check_spool_dir(self) -> List[Dict[str, Any]]:
         """Detect new or modified user crontabs in /var/spool/cron/"""
@@ -199,9 +189,6 @@ class CronCollector(BaseCollector):
 
         return events
 
-    # ------------------------------------------------------------------
-    # Entry-based detection
-    # ------------------------------------------------------------------
 
     def _check_for_new_entries(self) -> List[Dict[str, Any]]:
         """
@@ -243,9 +230,6 @@ class CronCollector(BaseCollector):
 
         return events
 
-    # ------------------------------------------------------------------
-    # Helpers 
-    # ------------------------------------------------------------------
 
     def _file_hash(self, path: str) -> Optional[str]:
         """SHA256 hash a file. Returns None if unreadable."""
